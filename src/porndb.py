@@ -1,6 +1,11 @@
+import logging
+import time
+
 import httpx
 
 BASE_URL = "https://api.theporndb.net"
+
+_log = logging.getLogger(__name__)
 
 
 class PornDBClient:
@@ -12,13 +17,16 @@ class PornDBClient:
 
     async def _get(self, path: str, params: dict | None = None) -> dict:
         async with httpx.AsyncClient() as client:
+            t0 = time.monotonic()
             response = await client.get(
                 f"{BASE_URL}{path}",
                 headers=self._headers,
                 params=params or {},
                 timeout=30.0,
             )
+            elapsed_ms = (time.monotonic() - t0) * 1000
             response.raise_for_status()
+            _log.debug("%s %s %s %.0fms", response.request.method, response.request.url, response.status_code, elapsed_ms)
             return response.json()
 
     async def get_sites(self, page: int = 1, per_page: int = 50, q: str = "") -> dict:

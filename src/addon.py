@@ -1,6 +1,7 @@
 import asyncio
 import base64
 import json
+import logging
 import os
 from datetime import datetime
 from urllib.parse import parse_qs, quote, urlparse
@@ -11,6 +12,10 @@ from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from src.porndb import PornDBClient
+
+logging.basicConfig(level=logging.DEBUG, format="%(name)s %(levelname)s %(message)s")
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
 
 app = FastAPI()
 

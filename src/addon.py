@@ -50,8 +50,9 @@ def _scene_to_meta(scene: dict) -> dict:
         release_info = datetime.strptime(raw_date, "%Y-%m-%d").strftime("%-d %b %Y")
     except ValueError:
         release_info = raw_date
+    scene_slug = scene.get("slug") or str(scene.get("_id") or "")
     return {
-        "id": f"tpdb_{scene['_id']}",
+        "id": f"tpdb_{scene_slug}",
         "type": "movie",
         "name": title,
         "logo": (scene.get("site") or {}).get("logo") or "",
@@ -281,9 +282,8 @@ async def meta(config_b64: str, meta_id: str):
 
     if not meta_id.startswith("tpdb_"):
         raise HTTPException(status_code=400, detail="Invalid meta id")
-    try:
-        scene_id = int(meta_id[len("tpdb_"):])
-    except ValueError:
+    scene_id = meta_id[len("tpdb_"):]
+    if not scene_id:
         raise HTTPException(status_code=400, detail="Invalid meta id")
 
     data = await client.get_scene(scene_id)
@@ -312,18 +312,18 @@ async def stream(config_b64: str, meta_id: str):
 
     if not meta_id.startswith("tpdb_"):
         raise HTTPException(status_code=400, detail="Invalid meta id")
-    try:
-        scene_id = int(meta_id[len("tpdb_"):])
-    except ValueError:
+    scene_id = meta_id[len("tpdb_"):]
+    if not scene_id:
         raise HTTPException(status_code=400, detail="Invalid meta id")
 
     data = await client.get_scene(scene_id)
     scene = data.get("data", {})
+    scene_slug = scene.get("slug") or scene_id
 
     streams = [{
         "name": "ThePornDB",
         "description": "View on ThePornDB",
-        "externalUrl": f"https://theporndb.net/scenes/{scene_id}",
+        "externalUrl": f"https://theporndb.net/scenes/{scene_slug}",
     }]
 
     if official_url := scene.get("url"):
@@ -336,5 +336,4 @@ async def stream(config_b64: str, meta_id: str):
         })
 
     return JSONResponse({"streams": streams})
-
 

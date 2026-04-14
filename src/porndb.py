@@ -45,7 +45,7 @@ class PornDBClient:
             {"site_id": site_id, "q": q, "page": page, "per_page": per_page},
         )
 
-    async def get_scene(self, scene_id: int) -> dict:
+    async def get_scene(self, scene_id: str) -> dict:
         return await self._get(f"/scenes/{scene_id}")
 
     async def get_performers(self, q: str = "", page: int = 1, per_page: int = 100) -> dict:

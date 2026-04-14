@@ -2,5 +2,5 @@ services:
   addon:
     volumes:
       - ./src:/app/src
-    command: uvicorn src.addon:app --host 0.0.0.0 --port 7001 --reload
+    command: uvicorn src.addon:app --host 0.0.0.0 --port 7000 --reload
     restart: "no"

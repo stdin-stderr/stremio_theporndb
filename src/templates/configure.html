@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ThePornDB — Stremio Addon Configuration</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      background: #0f0f13;
+      color: #e0e0e0;
+      min-height: 100vh;
+      padding: 2rem 1rem;
+    }
+
+    .container {
+      max-width: 860px;
+      margin: 0 auto;
+    }
+
+    h1 {
+      font-size: 1.6rem;
+      font-weight: 700;
+      color: #fff;
+      margin-bottom: 0.25rem;
+    }
+
+    .subtitle {
+      color: #888;
+      margin-bottom: 2rem;
+      font-size: 0.95rem;
+    }
+
+    .card {
+      background: #1a1a23;
+      border: 1px solid #2a2a38;
+      border-radius: 10px;
+      padding: 1.5rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .card h2 {
+      font-size: 1rem;
+      font-weight: 600;
+      color: #fff;
+      margin-bottom: 1rem;
+    }
+
+    .search-row {
+      display: flex;
+      gap: 0.75rem;
+      margin-bottom: 1rem;
+    }
+
+    input[type="text"] {
+      flex: 1;
+      background: #0f0f13;
+      border: 1px solid #2a2a38;
+      border-radius: 6px;
+      color: #e0e0e0;
+      padding: 0.55rem 0.85rem;
+      font-size: 0.9rem;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+
+    input[type="text"]:focus { border-color: #6c63ff; }
+
+    button {
+      background: #6c63ff;
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      padding: 0.55rem 1.1rem;
+      font-size: 0.9rem;
+      font-weight: 600;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: background 0.15s;
+    }
+
+    button:hover { background: #7d75ff; }
+    button:disabled { background: #3a3a50; cursor: not-allowed; }
+
+    .btn-secondary {
+      background: #2a2a38;
+    }
+
+    .btn-secondary:hover { background: #3a3a50; }
+
+    .status {
+      font-size: 0.85rem;
+      color: #888;
+      margin-bottom: 0.75rem;
+    }
+
+    .sites-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+      gap: 0.5rem;
+      max-height: 400px;
+      overflow-y: auto;
+      padding-right: 0.25rem;
+    }
+
+    .site-item {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      background: #0f0f13;
+      border: 1px solid #2a2a38;
+      border-radius: 6px;
+      padding: 0.5rem 0.7rem;
+      cursor: pointer;
+      transition: border-color 0.15s;
+      user-select: none;
+    }
+
+    .site-item:hover { border-color: #6c63ff; }
+
+    .site-item input[type="checkbox"] {
+      accent-color: #6c63ff;
+      width: 15px;
+      height: 15px;
+      flex-shrink: 0;
+      cursor: pointer;
+    }
+
+    .site-item label {
+      font-size: 0.82rem;
+      color: #ccc;
+      cursor: pointer;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .site-item.checked {
+      border-color: #6c63ff;
+      background: #1e1b38;
+    }
+
+    .pagination {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      margin-top: 1rem;
+      font-size: 0.85rem;
+      color: #888;
+    }
+
+    .url-row {
+      display: flex;
+      gap: 0.75rem;
+    }
+
+    .url-row input[type="text"] {
+      font-family: monospace;
+      font-size: 0.82rem;
+      color: #a0e0a0;
+    }
+
+    .selected-count {
+      font-size: 0.85rem;
+      color: #888;
+      margin-bottom: 0.75rem;
+    }
+
+    .empty {
+      color: #555;
+      font-size: 0.9rem;
+      padding: 1rem 0;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>ThePornDB — Stremio Addon</h1>
+    <p class="subtitle">Select sites to include as catalogs, then install the generated URL in Stremio.</p>
+
+    <div class="card">
+      <h2>1. Choose Sites</h2>
+      <div class="search-row">
+        <input type="text" id="searchInput" placeholder="Filter sites by name…" />
+        <button id="searchBtn">Search</button>
+        <button class="btn-secondary" id="clearBtn">Clear</button>
+      </div>
+      <div class="status" id="statusMsg">Loading sites…</div>
+      <div class="sites-grid" id="sitesGrid"></div>
+      <div class="pagination" id="pagination"></div>
+    </div>
+
+    <div class="card" id="generateCard" style="display:none">
+      <h2>2. Install URL</h2>
+      <div class="selected-count" id="selectedCount"></div>
+      <div class="url-row">
+        <input type="text" id="installUrl" readonly />
+        <button id="copyBtn">Copy</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const sitesGrid = document.getElementById('sitesGrid');
+    const statusMsg = document.getElementById('statusMsg');
+    const searchInput = document.getElementById('searchInput');
+    const searchBtn = document.getElementById('searchBtn');
+    const clearBtn = document.getElementById('clearBtn');
+    const pagination = document.getElementById('pagination');
+    const generateCard = document.getElementById('generateCard');
+    const installUrl = document.getElementById('installUrl');
+    const copyBtn = document.getElementById('copyBtn');
+    const selectedCount = document.getElementById('selectedCount');
+
+    // Pre-populate selected from server-resolved site objects
+    const selected = new Map(
+      {{ preselected_sites | tojson }}.map(s => [s.id, s])
+    );
+
+    let currentPage = 1;
+    let totalPages = 1;
+
+    function showSelected() {
+      pagination.innerHTML = '';
+      const sites = Array.from(selected.values());
+      if (sites.length === 0) {
+        sitesGrid.innerHTML = '<div class="empty">No sites selected. Use the search above to find and add sites.</div>';
+        statusMsg.textContent = '';
+      } else {
+        statusMsg.textContent = `${sites.length} site${sites.length !== 1 ? 's' : ''} selected`;
+        renderSites(sites);
+      }
+    }
+
+    async function loadSites(page = 1, q = '') {
+      if (!q) { showSelected(); return; }
+      statusMsg.textContent = 'Loading…';
+      sitesGrid.innerHTML = '';
+      pagination.innerHTML = '';
+      try {
+        const params = new URLSearchParams({ page, per_page: 50, q });
+        const resp = await fetch(`/api/sites?${params}`);
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const data = await resp.json();
+        const sites = data.data || [];
+        const meta = data.meta || {};
+        currentPage = meta.current_page || page;
+        totalPages = meta.last || 1;
+        statusMsg.textContent = `${meta.total || sites.length} sites found`;
+        renderSites(sites);
+        renderPagination(q);
+      } catch (e) {
+        statusMsg.textContent = `Error: ${e.message}`;
+      }
+    }
+
+    function renderSites(sites) {
+      if (!sites.length) {
+        sitesGrid.innerHTML = '<div class="empty">No sites found.</div>';
+        return;
+      }
+      sitesGrid.innerHTML = '';
+      for (const site of sites) {
+        const id = site.id;
+        const name = site.name;
+        const item = document.createElement('div');
+        item.className = 'site-item' + (selected.has(id) ? ' checked' : '');
+
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.id = `site_${id}`;
+        cb.checked = selected.has(id);
+
+        const label = document.createElement('label');
+        label.htmlFor = `site_${id}`;
+        label.textContent = name;
+        label.title = name;
+
+        item.appendChild(cb);
+        item.appendChild(label);
+
+        item.addEventListener('click', (e) => {
+          if (e.target !== cb) cb.checked = !cb.checked;
+          if (cb.checked) {
+            selected.set(id, { id, name });
+            item.classList.add('checked');
+          } else {
+            selected.delete(id);
+            item.classList.remove('checked');
+          }
+          updateGenerateCard();
+        });
+
+        sitesGrid.appendChild(item);
+      }
+      updateGenerateCard();
+    }
+
+    function renderPagination(q) {
+      pagination.innerHTML = '';
+      if (totalPages <= 1) return;
+
+      const prev = document.createElement('button');
+      prev.className = 'btn-secondary';
+      prev.textContent = '← Prev';
+      prev.disabled = currentPage <= 1;
+      prev.onclick = () => loadSites(currentPage - 1, q);
+
+      const info = document.createElement('span');
+      info.textContent = `Page ${currentPage} / ${totalPages}`;
+
+      const next = document.createElement('button');
+      next.className = 'btn-secondary';
+      next.textContent = 'Next →';
+      next.disabled = currentPage >= totalPages;
+      next.onclick = () => loadSites(currentPage + 1, q);
+
+      pagination.append(prev, info, next);
+    }
+
+    function updateGenerateCard() {
+      if (selected.size === 0) {
+        generateCard.style.display = 'none';
+        return;
+      }
+      generateCard.style.display = 'block';
+      selectedCount.textContent = `${selected.size} site${selected.size !== 1 ? 's' : ''} selected`;
+
+      const config = { sites: Array.from(selected.keys()) };
+      const encoded = btoa(JSON.stringify(config))
+        .replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+      const base = `${location.protocol}//${location.host}`;
+      installUrl.value = `${base}/${encoded}/manifest.json`;
+    }
+
+    searchBtn.addEventListener('click', () => loadSites(1, searchInput.value.trim()));
+    searchInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') loadSites(1, searchInput.value.trim());
+    });
+    clearBtn.addEventListener('click', () => {
+      searchInput.value = '';
+      showSelected();
+    });
+
+    copyBtn.addEventListener('click', () => {
+      navigator.clipboard.writeText(installUrl.value).then(() => {
+        copyBtn.textContent = 'Copied!';
+        setTimeout(() => { copyBtn.textContent = 'Copy'; }, 1500);
+      });
+    });
+
+    loadSites();
+  </script>
+</body>
+</html>

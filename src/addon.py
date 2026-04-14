@@ -3,7 +3,7 @@ import base64
 import json
 import os
 from datetime import datetime
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, quote, urlparse
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -63,7 +63,7 @@ def _scene_to_meta(scene: dict) -> dict:
             {
                 "name": p["name"],
                 "category": "Cast",
-                "url": f"stremio:///search?search={p['name'].replace(' ', '+')}",
+                "url": f"stremio:///search?search={quote(p['name'])}",
             }
             for p in scene.get("performers", [])
         ] + [
@@ -93,6 +93,12 @@ def _build_manifest(site_objects: list) -> dict:
         }
         for site in site_objects
     ]
+    catalogs.append({
+        "type": "movie",
+        "id": "tpdb_performers",
+        "name": "Performers",
+        "extra": [{"name": "search"}, {"name": "skip"}],
+    })
     return {
         "id": "com.stdin-stderr.theporndb",
         "version": "1.0.0",
@@ -109,6 +115,39 @@ def _build_manifest(site_objects: list) -> dict:
 def _parse_extras(extras_str: str) -> dict:
     parsed = parse_qs(extras_str)
     return {k: v[0] for k, v in parsed.items()}
+
+
+def _performer_images(p: dict) -> list:
+    imgs = []
+    imgs += [poster["url"] for poster in (p.get("posters") or []) if poster.get("url")]
+    if len(imgs) == 0 and p.get("image"):
+        imgs.append(p["image"])
+    return imgs
+
+
+def _performer_to_meta(p: dict, index: int = 0) -> dict:
+    imgs = _performer_images(p)
+    image = imgs[index] if index < len(imgs) else (imgs[0] if imgs else "")
+    extras = p.get("extras") or {}
+    links = [
+        {"name": v, "category": k.replace("_", " ").title(), "url": f"stremio:///search?search={v}"}
+        for k, v in {
+            "gender": extras.get("gender"),
+            "nationality": extras.get("nationality"),
+            "ethnicity": extras.get("ethnicity"),
+            "hair_colour": extras.get("hair_colour"),
+        }.items()
+        if v
+    ]
+    return {
+        "id": f"tpdb_p_{p['_id']}_{index}",
+        "type": "movie",
+        "name": p.get("name") or "",
+        "poster": image,
+        "background": image,
+        "description": p.get("bio") or "",
+        "links": links,
+    }
 
 
 # --- Routes ---
@@ -138,7 +177,7 @@ async def configure_edit(request: Request, config_b64: str):
         *[client.get_site(sid) for sid in site_ids], return_exceptions=True
     )
     preselected_sites = [
-        {"id": r["data"]["id"], "name": r["data"]["name"]}
+        {"id": r["data"]["id"], "name": r["data"]["name"], "logo": r["data"].get("logo", "")}
         for r in results
         if isinstance(r, dict) and "data" in r
     ]
@@ -188,6 +227,27 @@ async def catalog_with_extras(config_b64: str, catalog_id: str, extras: str):
 
 
 async def _catalog_handler(catalog_id: str, extras: dict) -> JSONResponse:
+    skip = int(extras.get("skip", 0))
+    search = extras.get("search", "")
+    page = skip // PER_PAGE + 1
+    client = _get_client()
+
+    if catalog_id == "tpdb_performers":
+        if not search:
+            return JSONResponse({"metas": []})
+        data = await client.get_performers(q=search, page=page, per_page=PER_PAGE)
+        metas = []
+        for p in data.get("data", []):
+            for i, img_url in enumerate(_performer_images(p)):
+                metas.append({
+                    "id": f"tpdb_p_{p['_id']}_{i}",
+                    "type": "movie",
+                    "name": p.get("name") or "",
+                    "poster": img_url,
+                    "posterShape": "portrait",
+                })
+        return JSONResponse({"metas": metas})
+
     if not catalog_id.startswith("tpdb_"):
         raise HTTPException(status_code=400, detail="Invalid catalog id")
     try:
@@ -195,11 +255,6 @@ async def _catalog_handler(catalog_id: str, extras: dict) -> JSONResponse:
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid catalog id")
 
-    skip = int(extras.get("skip", 0))
-    search = extras.get("search", "")
-    page = skip // PER_PAGE + 1
-
-    client = _get_client()
     if search:
         data = await client.search_scenes(site_id, search, page=page, per_page=PER_PAGE)
     else:
@@ -211,6 +266,19 @@ async def _catalog_handler(catalog_id: str, extras: dict) -> JSONResponse:
 
 @app.get("/{config_b64}/meta/movie/{meta_id}.json")
 async def meta(config_b64: str, meta_id: str):
+    client = _get_client()
+
+    if meta_id.startswith("tpdb_p_"):
+        try:
+            inner = meta_id[len("tpdb_p_"):]
+            performer_id_str, index_str = inner.rsplit("_", 1)
+            performer_id = int(performer_id_str)
+            index = int(index_str)
+        except (ValueError, IndexError):
+            raise HTTPException(status_code=400, detail="Invalid performer meta id")
+        data = await client.get_performer(performer_id)
+        return JSONResponse({"meta": _performer_to_meta(data.get("data", {}), index=index)})
+
     if not meta_id.startswith("tpdb_"):
         raise HTTPException(status_code=400, detail="Invalid meta id")
     try:
@@ -218,15 +286,30 @@ async def meta(config_b64: str, meta_id: str):
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid meta id")
 
-    client = _get_client()
     data = await client.get_scene(scene_id)
-    scene = data.get("data", {})
-
-    return JSONResponse({"meta": _scene_to_meta(scene)})
+    return JSONResponse({"meta": _scene_to_meta(data.get("data", {}))})
 
 
 @app.get("/{config_b64}/stream/movie/{meta_id}.json")
 async def stream(config_b64: str, meta_id: str):
+    client = _get_client()
+
+    if meta_id.startswith("tpdb_p_"):
+        try:
+            inner = meta_id[len("tpdb_p_"):]
+            performer_id = int(inner.rsplit("_", 1)[0])
+        except (ValueError, IndexError):
+            raise HTTPException(status_code=400, detail="Invalid performer meta id")
+        data = await client.get_performer(performer_id)
+        performer = data.get("data", {})
+        raw_links = (performer.get("extras") or {}).get("links") or {}
+        streams = [
+            {"name": name, "description": name, "externalUrl": url}
+            for name, url in raw_links.items()
+            if url
+        ]
+        return JSONResponse({"streams": streams})
+
     if not meta_id.startswith("tpdb_"):
         raise HTTPException(status_code=400, detail="Invalid meta id")
     try:
@@ -234,7 +317,6 @@ async def stream(config_b64: str, meta_id: str):
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid meta id")
 
-    client = _get_client()
     data = await client.get_scene(scene_id)
     scene = data.get("data", {})
 
@@ -254,3 +336,5 @@ async def stream(config_b64: str, meta_id: str):
         })
 
     return JSONResponse({"streams": streams})
+
+
